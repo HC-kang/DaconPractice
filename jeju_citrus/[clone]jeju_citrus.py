@@ -229,3 +229,4 @@ f.head()
 
 df[['date', '6~7_ride_sum', '7~8_ride_sum', '8~9_ride_sum', '9~10_ride_sum', '10~11_ride_sum']].head()
 
+## 점검
