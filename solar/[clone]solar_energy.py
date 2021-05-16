@@ -13,8 +13,9 @@ pio.renderers.default = 'notebook_connected'
 ##### 이게 뭔지...? ####################################################
 ######################################################################
 
-path = 'data/'
+path = '/Users/heechankang/projects/pythonworkspace/dacon_data/solar_data/'
 files = sorted(glob(path+'*.csv'))
+
 
 site_info = pd.read_csv(files[4])   # 발전소 정보
 energy = pd.read_csv(files[2])      # 발전소별 발전량
