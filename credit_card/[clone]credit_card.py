@@ -21,3 +21,7 @@ submission.info()
 submission.describe()
 
 train[train['amount']<0]
+
+import rpy2
+
+rpy2.__version__
