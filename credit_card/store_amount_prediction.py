@@ -390,6 +390,26 @@ for i in tqdm(resampling_data['store_id'].unique()):
 plt.figure(figsize=(8, 4))
 sns.boxplot(adf_p)
 
+# # 연습
+# def adf_test(y):
+#     return ADFTest(),should_diff(y)[0]
+
+# adf_p = []
+# count = 0
+# skipped = []
+
+# for i in tqdm(resampling_data['store'].unique()):
+#     ts = time_series(resampling_data, i)
+#     try:
+#         p_val = adf_test(ts)
+#         if p_val < 0.05:
+#             count += 1
+#         adf_p.append(p_val)
+#     except:
+#         skipped.append(i)
+
+# plt. figure(figsize = (8, 4))
+# sns.boxplot(adf_p)
 
 # In[35]:
 
