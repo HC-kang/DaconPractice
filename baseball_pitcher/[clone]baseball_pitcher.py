@@ -113,3 +113,55 @@ TBF_median = firstYearInKBO_11_18['TBF'].median() # TBF: 상대한 타자 수
 ERA_median = firstYearInKBO_11_18['ERA'].median() # ERA: 평균자책점
 Elite_11_18 = firstYearInKBO_11_18.query('TBF >= @TBF_median & ERA <= @ERA_median')
 Elite_11_18
+
+
+## 5.4 모델 구축과 검증
+### 5.4.1 선형 회귀 분석
+
+# 자료 불러오기
+import seaborn as sns
+import matplotlib.pyplot as plt
+plt.figure(figsize = (10, 10))
+sns.set_style('darkgrid')
+sns.scatterplot(data = atKbo_11_18_StatCast.sort_values('pitch_name'),
+                x = 'plate_x',
+                y = 'plate_z',
+                hue = 'pitch_name',
+                alpha = 0.1)
+plt.show()
+
+
+# 지역 표시하기
+plt.figure(figsize = (10, 10))
+sns.set_style('darkgrid')
+sns.scatterplot(data = atKbo_11_18_StatCast.sort_values('pitch_name'),
+                x = 'plate_x',
+                y = 'plate_z',
+                hue = 'pitch_name',
+                alpha = 0.1)
+plt.plot([-1, -1], [1.5, 3.5], 'black')
+plt.plot([1, 1], [1.5, 3.5], 'black')
+plt.plot([-1, 1], [1.5, 1.5], 'black')
+plt.plot([-1, 1], [3.5, 3.5], 'black')
+plt.show()
+
+
+# called strike
+plt.figure(figsize = (10, 10))
+sns.set_style('darkgrid')
+sns.scatterplot(data = (atKbo_11_18_StatCast.
+                        sort_values('pitch_name').
+                        query('description == "called_strike"')),
+                x = 'plate_x',
+                y = 'plate_z',
+                hue = 'pitch_name',
+                alpha = 0.1)
+plt.plot([-1, -1], [1.5, 3.5], 'black')
+plt.plot([1, 1], [1.5, 3.5], 'black')
+plt.plot([-1, 1], [1.5, 1.5], 'black')
+plt.plot([-1, 1], [3.5, 3.5], 'black')
+plt.plot()
+
+lists = [1,3,5]
+set(lists)
+lists
