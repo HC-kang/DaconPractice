@@ -162,6 +162,43 @@ plt.plot([-1, 1], [1.5, 1.5], 'black')
 plt.plot([-1, 1], [3.5, 3.5], 'black')
 plt.plot()
 
-lists = [1,3,5]
-set(lists)
-lists
+edgePitches = (atKbo_11_18_StatCast.query(
+              '(plate_x >= 0.8 & plate_x <= 1.2 & plate_z <= 3.7 & plate_z >= 1.3) |\
+               (plate_x <= -0.8 & plate_x >= -1.2 & plate_z <=3.7 & plate_z >=1.3)|\
+               (plate_x >= -0.8 & plate_x <= 0.8 & plate_z <= 1.7 & plate_z >=1.3)|\
+               (plate_x >= -0.8 & plate_x <= 0.8 & plate_z <= 3.7 & plate_z >= 3.3)').
+               query('pitch_name.notnull()', engine = 'python').
+               query('description == "called_strike"'))
+
+plt.figure(figsize = (10, 10))
+sns.set_style('darkgrid')
+sns.scatterplot(data = edgePitches,
+                x = 'plate_x',
+                y = 'plate_z',
+                hue = 'pitch_name',
+                alpha = 0.1)
+plt.plot([-1, -1], [1.5, 3.5], 'black')
+plt.plot([1, 1], [1.5, 3.5], 'black')
+plt.plot([-1, 1], [1.5, 1.5], 'black')
+plt.plot([-1, 1], [3.5, 3.5], 'black')
+plt.show()
+
+
+(edgePitches[['pitcher_name', 'pitch_name', 'game_date']].
+    groupby(['pitcher_name', 'pitch_name']).
+    count().
+    head(10)
+)
+
+(edgePitches[['pitcher_name', 'pitch_name', 'game_date']].
+    groupby(['pitcher_name', 'pitch_name']).
+    count().
+    groupby('pitcher_name').
+    apply(lambda x: x / x.sum()).
+    head(10)
+)
+
+(edgePitches[['pitcher_name', 'pitch_name', 'game_date']].
+    groupby(['pitcher_name', 'pitch_name']).
+    
+)
