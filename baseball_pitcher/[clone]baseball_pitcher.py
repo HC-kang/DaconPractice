@@ -6,13 +6,14 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import statsmodels.api as sm
+import os
 print(matplotlib.__version__)
 print(np.__version__)
 print(pd.__version__)
 print(sns.__version__)
 print(sm.__version__)
+os.chdir('/Users/heechankang/projects/pythonworkspace/dacon_data/baseball_pitcher')
 
-import pandas as pd
 atKbo_11_18_KboRegSsn = pd.read_csv('kbo_yearly_foreigners_2011_2018.csv')
 atKbo_11_18_MlbTot = pd.read_csv('fangraphs_foreigners_2011_2018.csv')
 atKbo_19_MlbTot = pd.read_csv('fangraphs_foreigners_2019.csv')
@@ -200,5 +201,227 @@ plt.show()
 
 (edgePitches[['pitcher_name', 'pitch_name', 'game_date']].
     groupby(['pitcher_name', 'pitch_name']).
-    
+    count().
+    groupby('pitcher_name').
+    apply(lambda x: x/x.sum()).
+    query('game_date >= 0.1').
+    head(10)
 )
+
+coordEdge = (edgePitches[['pitcher_name', 'pitch_name', 'game_date']].
+    groupby(['pitcher_name', 'pitch_name']).
+    count().
+    groupby('pitcher_name').
+    apply(lambda x:x/x.sum()).
+    query('game_date >= 0.1').
+    groupby('pitcher_name').
+    count()
+)
+
+coordEdge = coordEdge.reset_index().rename(columns = {'game_date':'num_pitches'})
+
+coordEdge.head()
+
+Elite_11_18 = Elite_11_18.reset_index()
+
+Elite_11_18 = Elite_11_18.merge(coordEdge, on = 'pitcher_name')
+
+Elite_11_18.boxplot('ERA', 'num_pitches')
+
+import statsmodels.api as sm
+
+y = Elite_11_18.ERA.values
+X = sm.add_constant(Elite_11_18.num_pitches.values)
+
+model = sm.OLS(y, X)
+
+result = model.fit()
+
+result.summary()
+
+
+#####
+# 아웃확률 추정하기
+###
+
+atKbo_11_18_StatCast[['batter', 'events', 'description']].head(10)
+
+(atKbo_11_18_StatCast[['batter', 'events', 'description']].
+    query('events.notnull()', engine = 'python').
+    head(10)
+)
+
+def recordInning(key, dic):    
+    if dic.get(key) == None :
+        dic[key] = 1
+    else :
+        dic[key] += 1
+    
+    return dic
+    
+
+def getInningResult(df):
+    batterCount = 0
+    batterCountTemp = 0
+    outs = ['out', 'out', 'out']
+    inningDict = {}
+    
+    for idx in range(len(df)-1, -1, -1):
+        batterCount += 1
+        
+        if 'out' in df.events.iloc[idx]:
+            outs.pop()
+        
+        # out이 3번 나오면 기록
+        if len(outs) == 0:
+            _key = f'I_{batterCount - batterCountTemp}'
+            inningDict = recordInning(_key, inningDict)
+            batterCountTemp = batterCount
+            
+            if idx != 0 :
+                outs = ['out', 'out', 'out']
+            
+    if len(outs) != 0:
+        _key = f'I_{batterCount - batterCountTemp + len(outs)}'
+        inningDict = recordInning(_key, inningDict)
+
+    return pd.DataFrame(data = dict(sorted(inningDict.items())), index = [0])
+
+
+MLB_11_18_InningSummary = (atKbo_11_18_StatCast.
+    query('events.notnull()', 
+          engine = 'python').
+    groupby(['pitcher_name', 'game_date']).
+    apply(getInningResult))
+
+MLB_11_18_InningSummary.head()
+
+MLB_11_18_InningSummary = (MLB_11_18_InningSummary.
+    groupby('pitcher_name').
+    sum()[sorted(MLB_11_18_InningSummary.columns)])
+
+MLB_11_18_InningSummary
+
+MLB_11_18_InningSummary = MLB_11_18_InningSummary.reset_index()
+
+Elite_11_18_InningSummary = (MLB_11_18_InningSummary.
+    query('pitcher_name in @Elite_11_18.pitcher_name').
+    reset_index(drop = True))
+
+Elite_11_18_InningSummary
+
+def makeC1(df):
+    '''
+    Parameters:
+    -----------------
+
+    Returns:
+    -----------------
+    pd.Sereis
+        논문에성 정의한 C1값
+    '''
+    return df.sum(axis = 1)
+
+def makeC2(df):
+    '''
+    Parameters:
+    -----------------
+
+    Returns:
+    -----------------
+    pd.Sereis
+        논문에성 정의한 C@값
+    '''
+    return 3*(df['I_3'] + df['I_4'])
+
+def makeC3(df):
+
+    '''
+    Parameters:
+    -----------------
+
+    Returns:
+    -----------------
+    pd.Sereis
+        논문에성 정의한 C3값
+    '''
+    output = 0
+    for N in range(5, 18):
+        try:
+            output += (N-3)*df[f'I_{N}']
+        except:
+            continue
+    return output
+
+def makeDelta(df):
+    '''
+    Parameters:
+    ---------
+    df: InningSummary with C1, C2, C3
+
+    Returns:
+    --------
+    pd.Series
+        논문에서 정의한 Delta값
+    '''
+    Delta = ((-df['C1'] + df['C2'] + 2*df['C3'])+
+            ((df['C1'] - df['C2'] - 2*df['C3']).pow(2)+
+            4*df['C3']*(3*df['C1'] + df['C2'] + 3*df['C3'])).pow(0.5))/\
+            (2*(3*df['C1'] + df['C2'] + 3*df['C3']))
+    return Delta                
+
+def makeOutProb(df):
+    '''
+    Parameters:
+    ----------
+    df: InningSummary
+
+    Returns:
+    --------
+    pd.DataFrame
+        InningSummary iwth C1, C2, C3, Delta, outProb
+    '''
+    df['C1'] = makeC1(df)
+    df['C2'] = makeC2(df)
+    df['C3'] = makeC3(df)
+
+    df['Delta'] = makeDelta(df)
+    df['outProb'] = 1 - df['Delta']
+
+    return df
+
+Elite_11_18_InningSummary = makeOutProb(Elite_11_18_InningSummary)
+Elite_11_18_InningSummary.sort_values('outProb', ascending = False)
+
+edgePitches_19 = \
+(atKbo_19_StatCast.query(
+    '(plate_x >= 0.8 & plate_x <= 1.2 & plate_z <= 3.7 & plate_z >= 1.3) | \
+     (plate_x <= -0.8 & plate_x >= -1.2 & plate_z <= 3.7 & plate_z >= 1.3) | \
+     (plate_x >= -0.8 & plate_x <= 0.8 & plate_z <= 1.7 & plate_z >= 1.3) | \
+     (plate_x >= -0.8 & plate_x <= 0.8 & plate_z <= 3.7 & plate_z >= 3.3)').
+ query('pitch_name.notnull()', engine='python').
+ query('description == "called_strike"'))
+
+coordEdge_19 = \
+(edgePitches_19[['pitcher_name', 'pitch_name', 'game_date']].
+ groupby(['pitcher_name', 'pitch_name']).
+ count().
+ groupby('pitcher_name').
+ apply(lambda x : x / x.sum()).
+ query('game_date >= 0.1').
+ groupby('pitcher_name').
+ count())
+
+MLB_19_InningSummary = (atKbo_19_StatCast.query('events.notnull()', engine = 'python').
+                        groupby(['pitcher_name', 'game_date']).
+                        apply(getInningResult))
+
+MLB_19_InningSummary = (MLB_19_InningSummary.
+                        groupby('pitcher_name').
+                        sum()[sorted(MLB_19_InningSummary.columns)])
+
+MLB_19_InningSummary = MLB_19_InningSummary.reset_index()
+
+MLB_19_InningSummary = makeOutProb(MLB_19_InningSummary)
+MLB_19_InningSummary.sort_values('outProb', ascending=False)
+
