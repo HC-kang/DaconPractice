@@ -3,6 +3,7 @@
 ###
 import matplotlib
 import numpy as np
+from numpy.core.defchararray import count
 import pandas as pd
 import seaborn as sns
 import statsmodels.api as sm
@@ -424,4 +425,118 @@ MLB_19_InningSummary = MLB_19_InningSummary.reset_index()
 
 MLB_19_InningSummary = makeOutProb(MLB_19_InningSummary)
 MLB_19_InningSummary.sort_values('outProb', ascending=False)
+
+coordEdge_19 = coordEdge_19.reset_index().rename(columns = {'game_date':'num_pitches'})
+
+coordEdge_19.sort_values('num_pitches', ascending = False)
+
+#####
+# 성능 향상을 위한 방법
+###
+
+import pandas as pd
+
+atKbo_11_18_StatCast = pd.read_csv('baseball_savant_foreigners_2011_2018.csv')
+
+atKbo_11_18_StatCast.head(10)
+
+import numpy as np
+
+def Compute_Distance(x1, y1, x2, y2):
+    return ((x1-x2)**2 + (y1-y2)**2)**0.5
+
+def Mean_Distance_Per_Batter(df):
+    if df.shape[0] == 1:
+        return np.nan
+    
+    distances = []
+    for i in range(df.shape[0] -1, 0, -1):
+        distance = Compute_Distance(df['plate_x'].iloc[i], df['plate_z'].iloc[i],
+                                    df['plate_x'].iloc[i-1], df['plate_z'].iloc[i-1])
+        distances.append(distance)
+    
+    return np.mean(distances)
+
+MDPB = atKbo_11_18_StatCast.groupby(['pitcher_name', 'batter']).apply(Mean_Distance_Per_Batter)
+MDPB
+
+pitch_mix = MDPB.dropna().groupby('pitcher_name').mean()
+pitch_mix.head()
+
+Elite_11_18['PMI'] = pitch_mix[Elite_11_18.pitcher_name].values
+Elite_11_18
+
+import statsmodels.api as sm
+
+y = Elite_11_18.ERA.values
+X = sm.add_constant(Elite_11_18[['num_pitches', 'PMI']].values)
+
+model = sm.OLS(y, X)
+
+result = model.fit()
+
+result.summary()
+
+MDPB_19 = atKbo_19_StatCast.groupby(['pitcher_name', 'batter']).\
+    apply(Mean_Distance_Per_Batter)
+pitch_mix_19 = MDPB_19.dropna().groupby('pitcher_name').mean()
+pitch_mix_19.head()
+
+coordEdge_19['PMI'] = pitch_mix_19[coordEdge_19.pitcher_name].values
+coordEdge_19
+
+test_X = sm.add_constant(coordEdge_19[['num_pitches', 'PMI']].values)
+coordEdge_19['pred'] = result.predict(test_X)
+coordEdge_19.sort_values('pred')
+
+#####
+# 배럴 타구 허용 비율 
+
+def countBarrelPitches(df):
+    lower = 26
+    upper = 30 
+
+    QL = []
+
+    for mph in range(98, int(df.launch_speed.max())+1):
+        if mph <= 115:
+            QL.append(df.query(f'(launch_speed >= {mph} & launch_speed < {mph+1}) & \
+                                 (launch_angle >= {lower} & launch_angle <= {upper})'))
+            lower -=1
+            upper += 20/18
+
+        else: 
+            QL.append(df.query(f'(launch_speed >= {mph} & launch_speed < {mph+1}) & \
+                                 (launch_angle >= {lower} & launch_angle <= {upper})'))
+    
+    BarrelPitches = (pd.concat(QL, axis = 0).
+                     groupby('pitcher_name')['game_date'].
+                     count().
+                     reset_index())
+    BarrelPitches = BarrelPitches.rename({'game_date':'barrel_pitches'}, axis = 1)
+
+    return BarrelPitches
+
+countBarrelPitches(atKbo_19_StatCast).head()
+
+def countTotalPitches(df):
+    TotalPitches = df.groupby('pitcher_name')['game_date'].count().reset_index()
+    TotalPitches = TotalPitches.rename({'game_date':'total_pitches'}, axis = 1)
+
+    return TotalPitches
+
+countTotalPitches(atKbo_19_StatCast).head()
+
+def getBarrelRatio(df):
+    BarrelPitches_result = countBarrelPitches(df)
+    TotalPitches_result = countTotalPitches(df)
+
+    pitches = pd.merge(BarrelPitches_result, TotalPitches_result, on='pitcher_name',
+                       how = 'right')
+    pitches['barrel_ratio'] = pitches['barrel_pitches'] / pitches['total_pitches']
+    return pitches.sort_values('barrel_ratio')
+
+Stat19notnull = atKbo_19_StatCast[atKbo_19_StatCast.launch_speed.notnull() & \
+                                  atKbo_19_StatCast.launch_angle.notnull()]
+getBarrelRatio(Stat19notnull)
 
