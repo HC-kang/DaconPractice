@@ -51,7 +51,7 @@ energy['date'] = energy['time'].apply(lambda x: x.split()[0])
 energy['time'] = energy['time'].apply(lambda x: x.split()[1])
 energy['time'] = energy['time'].str.rjust(8,'0')
 # 한자릿수 시간 앞에 0 추가해서 1시 -> 01시로 바꿔주기
-
+energy
 # 24시를 00시로 바꿔주기
 # @안바꿔주면 datetime형으로 바뀌지 않음@
 energy.loc[energy['time']=='24:00:00', 'time'] = '00:00:00'

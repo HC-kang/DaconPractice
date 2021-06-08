@@ -3,7 +3,6 @@
 ###
 import matplotlib
 import numpy as np
-from numpy.core.defchararray import count
 import pandas as pd
 import seaborn as sns
 import statsmodels.api as sm
@@ -33,11 +32,18 @@ print(atKbo_11_18_KboRegSsn[['ERA', 'TBF']].describe())
 atKbo_11_18_MlbTot[['ERA', 'TBF']].hist()
 print(atKbo_11_18_MlbTot[['ERA', 'TBF']].describe())
 
-m_mean = (atKbo_11_18_MlbTot.groupby('pitcher_name')['ERA'].mean().reset_index().rename(columns = {'ERA':"MLB_mean"}))
-k_mean = (atKbo_11_18_KboRegSsn.groupby('pitcher_name')['ERA'].mean().reset_index().rename(columns = {'ERA':'KBO_mean'}))
+m_mean = (atKbo_11_18_MlbTot.groupby('pitcher_name')['ERA'].
+          mean().
+          reset_index().
+          rename(columns = {'ERA':"MLB_mean"}))
+k_mean = (atKbo_11_18_KboRegSsn.groupby('pitcher_name')['ERA'].
+          mean().
+          reset_index().
+          rename(columns = {'ERA':'KBO_mean'}))
 
 df = pd.merge(m_mean, k_mean, how = 'inner', on = 'pitcher_name')
 df.head()
+df.shape
 
 df.plot(kind = 'scatter', x = 'MLB_mean', y = 'KBO_mean')
 print(df.corr())
@@ -52,12 +58,22 @@ print(atKbo_19_StatCast.columns)
 print(atKbo_19_StatCast.columns)
 
 atKbo_11_18_StatCast[['events', 'description', 'pitch_name']]
+atKbo_11_18_StatCast[['events', 'description', 'pitch_name']].info()
 
-(atKbo_11_18_StatCast['events'].value_counts().sort_values(ascending = True).plot(kind = 'barh', figsize = (8, 8)))
+(atKbo_11_18_StatCast['events'].
+    value_counts().
+    sort_values(ascending = True).
+    plot(kind = 'barh', figsize = (8, 8)))
 
-(atKbo_11_18_StatCast['description'].value_counts().sort_values(ascending = True).plot(kind = 'barh', figsize = (8, 8)))
+(atKbo_11_18_StatCast['description'].
+    value_counts().
+    sort_values(ascending = True).
+    plot(kind = 'barh', figsize = (8, 8)))
 
-(atKbo_11_18_StatCast['pitch_name'].value_counts().sort_values(ascending = True).plot(kind = 'barh', figsize = (8, 8)))
+(atKbo_11_18_StatCast['pitch_name'].
+    value_counts().
+    sort_values(ascending = True).
+    plot(kind = 'barh', figsize = (8, 8)))
 
 
 #####
