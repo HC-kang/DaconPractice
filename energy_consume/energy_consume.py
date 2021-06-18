@@ -228,16 +228,16 @@ train
 
 # 파생변수 생성 - 일주일 이전까지 확인
 # add lag feature
-def lag_feature(df, lags, col):
+def day_lag_feature(df, lags, col):
     tmp = df[['num_day','num','hour',col]]
     for i in lags:
         shifted = tmp.copy()
-        shifted.columns = ['num_day','num','hour', col+'_lag_'+str(i)]
+        shifted.columns = ['num_day','num','hour', col+'_day_lag_'+str(i)]
         shifted['num_day'] += i
         df = pd.merge(df, shifted, on=['num_day','num','hour'], how='left')
     return df
 
-train = lag_feature(train, [1,2,3,4,5,6,7,14,21], 'energy')
+train = day_lag_feature(train, [1,2,3,4,5,6,7,14,21], 'energy')
 
 train[train['num']==60].head(40)
 train[train['num']==60].tail(40)
@@ -248,15 +248,49 @@ train.isna().sum()
 train.columns
 train.info()
 
+# 파생변수 생성 - 3시간 이전까지 전력량 확인
+# add lag feature
+def hour_lag_feature(df, lags, col):
+    tmp = df[['num_day','num','hour',col]]
+    for i in lags:
+        shifted = tmp.copy()
+        shifted.columns = ['num_day','num','hour', col+'_hour_lag_'+str(i)]
+        shifted['hour'] += i
+        df = pd.merge(df, shifted, on=['num_day','num','hour'], how='left')
+    return df
+
+train = hour_lag_feature(train, [1,2,3], 'energy')
+train
+
 ###################
 # 일단 대략적으로 끝
 ###################
+def SMAPE(true, pred):
+    '''
+    true: np.array 
+    pred: np.array
+    '''
+    return np.mean((np.abs(true-pred))/(np.abs(true) + np.abs(pred)))
+
+
+SMAPE(y_valid, y_pred)
+# 이전 : 0.04320080970690549
+# 이후 : 0.027917625681270052
+
+train.drop(['energy_hour_lag_1','energy_hour_lag_2','energy_hour_lag_3','THI'], axis = 1, inplace=True)
+train
+
+
+
 # ---*---*---* 첫 번째 모델 ---*---*---*
 # 불쾌지수 미적용
-train.to_pickle('full_train_nan.pkl')
+# train.to_pickle('full_train_nan.pkl')
 train = pd.read_pickle('full_train_nan.pkl')
-
 train.drop('date_time', axis = 1, inplace=True)
+
+# nan값 잡기
+train.isna().sum()
+train.fillna(0, inplace=True)
 
 train[train['num_day']==78]
 train[train['num_day']==85]
@@ -277,7 +311,7 @@ del train
 #########################
 
 from xgboost import XGBRegressor
-model = XGBRegressor(
+xgb = XGBRegressor(
     max_depth = 8,
     n_estimators = 1000,
     min_child_weight=300,
@@ -286,7 +320,7 @@ model = XGBRegressor(
     eta=0.3,
     seed=42)
 
-model.fit(
+xgb.fit(
     X_train,
     y_train,
     eval_metric='rmse',
@@ -295,13 +329,13 @@ model.fit(
     early_stopping_rounds=30
 )
 
-y_pred = model.predict(X_valid)
-y_test_xgboost = model.predict(X_test)
+y_pred = xgb.predict(X_valid)
+y_test_xgboost = xgb.predict(X_test)
 
 ##################################
 from xgboost import plot_importance
 fig, ax = plt.subplots(1, 1, figsize = (10, 14))
-plot_importance(model, ax = ax)
+plot_importance(xgb, ax = ax)
 
 # 모델 저장하기
 # model.save_model('.model')
@@ -311,14 +345,26 @@ submission = pd.DataFrame({
     "num_date_time": sample_submission.num_date_time, 
     "answer": y_test_xgboost
 })
-submission.to_csv('xgb_submission.csv', index=False)
+submission.to_csv('xgb_submission_3.csv', index=False)
 sample_submission
 submission
 
 '''
+1회차.
+xgb_submission.csv
 피클 불러오자마자 난 그대로 두고 xg부스트 돌려보기. 생각보다 점수 잘 나옴. 
 점수 : 22.7423089706
 등수 : 제출 시 219등
+
+2회차.
+xgb_submission_2.csv
+모델은 얼리스탑 30->50, 불쾌지수와 hour lag 적용해서 다시 돌려봄.
+점수 : 73.9680038861	
+
+4회차.
+xgb_submission_3.csv
+모델은 얼리스탑 30, 불쾌지수와 hour lag 빼고, nan값 0으로 채움.
+점수 : 
 '''
 ###############################
 ###############################
@@ -327,15 +373,62 @@ submission
 
 #########################
 # ---*---*---*  ---*---*---*
-# 두 번째 모델
-# 불쾌지수 추가 스케일러 적용
+# 세번째 제출 준비
+# 불쾌지수, hour lag 추가, nan값 제거, lgbm으로
+
+from lightgbm import LGBMRegressor
+lgbm = LGBMRegressor(
+    max_depth=8,
+    n_estimators=1000,
+    min_child_weight=300,
+    colsample_bytree=0.8,
+    subsample=0.8,
+    eta=0.3,
+    seed=42
+)
+lgbm.fit(
+    X_train,
+    y_train,
+    eval_metric='rmse',
+    eval_set=[(X_train, y_train), (X_valid, y_valid)],
+    verbose=True,
+    early_stopping_rounds=30
+)
+
+y_test_lgbm = lgbm.predict(X_test)
+y_test_lgbm
+
+# 제출자료 만들기
+submission = pd.DataFrame({
+    "num_date_time": sample_submission.num_date_time, 
+    "answer": y_test_lgbm
+})
+submission.to_csv('lgbm_submission.csv', index=False)
+sample_submission
+submission
+
+# 중요도 확인
+from lightgbm import plot_importance
+fig, ax = plt.subplots(1, 1, figsize = (10, 14))
+plot_importance(lgbm, ax = ax)
+
+'''
+점수 : 52.0971434916	
+이건 뭐지... 왜 더 떨어질까.
+'''
+
+
+# ---*---*---*  ---*---*---*
+# 네번째 제출 준비
+# 불쾌지수, hour lag 추가, 스케일러 적용
 from sklearn.preprocessing import MinMaxScaler
 
 mmscaler = MinMaxScaler()
 
 train_mmscaled = mmscaler.fit_transform(train)
 
-#TODO:
+train_mmscaled_undo = mmscaler.inverse_transform(train_mmscaled)
+train_mmscaled_undo
 
 
 
