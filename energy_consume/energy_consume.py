@@ -266,11 +266,12 @@ train
 # 일단 대략적으로 끝
 ###################
 def SMAPE(true, pred):
-    '''
-    true: np.array 
-    pred: np.array
-    '''
-    return np.mean((np.abs(true-pred))/(np.abs(true) + np.abs(pred)))
+    
+    v = 2 * abs(pred - true) / (abs(pred) + abs(true))
+
+    output = np.mean(v) * 100
+
+    return output
 
 
 SMAPE(y_valid, y_pred)
@@ -395,6 +396,7 @@ lgbm.fit(
     early_stopping_rounds=30
 )
 
+y_pred = lgbm.predict(X_valid)
 y_test_lgbm = lgbm.predict(X_test)
 y_test_lgbm
 
@@ -420,6 +422,37 @@ plot_importance(lgbm, ax = ax)
 
 # ---*---*---*  ---*---*---*
 # 네번째 제출 준비
+# 불쾌지수, hour lag 추가, 스케일러는 미적용
+# 단순 랜덤포레스트 
+from sklearn.ensemble import RandomForestRegressor
+rf = RandomForestRegressor(
+    n_estimators=25,
+    random_state=42, 
+    max_depth=15, 
+    n_jobs=-1
+)
+rf.fit(
+    X_train,
+    y_train,
+)
+
+y_pred = rf.predict(X_valid)
+y_test_rf = rf.predict(X_test)
+y_test_rf
+
+# 제출자료 만들기
+submission = pd.DataFrame({
+    "num_date_time": sample_submission.num_date_time, 
+    "answer": y_test_rf
+})
+submission.to_csv('rf_submission.csv', index=False)
+sample_submission
+submission
+
+
+
+# ---*---*---*  ---*---*---*
+# 다섯번째 제출 준비
 # 불쾌지수, hour lag 추가, 스케일러 적용
 from sklearn.preprocessing import MinMaxScaler
 
@@ -499,6 +532,7 @@ rf.fit(
     y_train,
 )
 
+y_pred = rf.predict(X_valid)
 y_test_rf = rf.predict(X_test)
 y_test_rf
 #################################
