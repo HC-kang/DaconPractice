@@ -202,7 +202,7 @@ train
 
 # 파생변수 생성 - 건물별 평균치
 group = train.groupby(['num']).mean()
-group.drop(['wind', 'rain', 'cooling', 'solar','month', 'day', 'hour','num_day'], axis = 1, inplace=True)
+group.drop(['wind', 'rain', 'cooling', 'solar','month', 'day', 'hour','num_day','isweekend', 'isholy','weekday'], axis = 1, inplace=True)
 group.columns = [str(col) +'_num' for col in group.columns]
 group
 
@@ -260,7 +260,7 @@ def hour_lag_feature(df, lags, col):
     return df
 
 train = hour_lag_feature(train, [1,2,3], 'energy')
-train
+train.temp4
 
 ###################
 # 일단 대략적으로 끝
@@ -288,7 +288,7 @@ train
 # train.to_pickle('full_train_nan.pkl')
 train = pd.read_pickle('full_train_nan.pkl')
 train.drop('date_time', axis = 1, inplace=True)
-
+#train = train[train['num_day']>7]
 # nan값 잡기
 train.isna().sum()
 train.fillna(0, inplace=True)
@@ -313,12 +313,12 @@ del train
 
 from xgboost import XGBRegressor
 xgb = XGBRegressor(
-    max_depth = 8,
-    n_estimators = 1000,
-    min_child_weight=300,
-    colsample_bytree = 0.8,
-    subsample=0.8,
-    eta=0.3,
+    # max_depth = 8,
+    # n_estimators = 1000,
+    # min_child_weight=300,
+    # colsample_bytree = 0.8,
+    # subsample=0.8,
+    # eta=0.3,
     seed=42)
 
 xgb.fit(
@@ -346,7 +346,7 @@ submission = pd.DataFrame({
     "num_date_time": sample_submission.num_date_time, 
     "answer": y_test_xgboost
 })
-submission.to_csv('xgb_submission_3.csv', index=False)
+submission.to_csv('xgb_submission_4.csv', index=False)
 sample_submission
 submission
 
@@ -362,10 +362,37 @@ xgb_submission_2.csv
 모델은 얼리스탑 30->50, 불쾌지수와 hour lag 적용해서 다시 돌려봄.
 점수 : 73.9680038861	
 
+3회차.
+lgbm_submission.csv
+lgbm.. 기타 기록은 누락.
+점수 : 52.0971434916	
+
+4회차.
+rf_submission.csv
+랜덤 포레스트..
+점수 : 38.3784020047	
+
 4회차.
 xgb_submission_3.csv
 모델은 얼리스탑 30, 불쾌지수와 hour lag 빼고, nan값 0으로 채움.
-점수 : 
+점수 : ??? 이건 뭐지.. 기록 누락..
+
+5회차.
+xgb_submission_4.csv
+모델은 4와 그대로.. temp4만 올려서 돌렸는데, 연관성 바닥을 치네. 버리자.
+
+
+6회차.
+gbm_submission.csv
+gbm 모델 가져다 썼고, 성능은 그냥 그렇네.. 아무래도 이후 추가한 변수를 버려야겠다.
+점수 : 44.2574092616
+
+7회차.
+앙상블
+voting_ensemble_submission.csv
+점수 : 92.4047396438
+왜 점점 퇴화하냐..
+
 '''
 ###############################
 ###############################
@@ -449,132 +476,57 @@ submission.to_csv('rf_submission.csv', index=False)
 sample_submission
 submission
 
-
-
 # ---*---*---*  ---*---*---*
-# 다섯번째 제출 준비
-# 불쾌지수, hour lag 추가, 스케일러 적용
-from sklearn.preprocessing import MinMaxScaler
+# 여섯번째 제출 준비
+import lightgbm as lgb
+feature_name = X_train.columns.tolist()
+X_train.num_day
+params = {
+    'objective': 'mse',
+    'metric': 'rmse',
+    'num_leaves': 2 ** 8 -1,
+    'learning_rate': 0.005,
+    'feature_fraction': 0.8,
+    'bagging_fraction': 0.75,
+    'bagging_freq': 5,
+    'seed': 1,
+    'verbose': 1
+}
+feature_name_indexes = [ 
+                        'isholy',
+                        'weekday',
+                        'isweekend',
+]
 
-mmscaler = MinMaxScaler()
+lgb_train = lgb.Dataset(X_train[feature_name], y_train)
+lgb_eval = lgb.Dataset(X_valid[feature_name], y_valid, reference=lgb_train)
 
-train_mmscaled = mmscaler.fit_transform(train)
+evals_result = {}
+gbm = lgb.train(
+        params, 
+        lgb_train,
+        num_boost_round=3000,
+        valid_sets=(lgb_train, lgb_eval), 
+        feature_name = feature_name,
+        categorical_feature = feature_name_indexes,
+        verbose_eval=50, 
+        evals_result = evals_result,
+        early_stopping_rounds = 30)
 
-train_mmscaled_undo = mmscaler.inverse_transform(train_mmscaled)
-train_mmscaled_undo
-
-
-
-
-# ---*---*---*  ---*---*---*
-# ---*---*---*  ---*---*---*
-# ---*---*---*  ---*---*---*
-'''
-전체 틀잡기
-'''
-from xgboost import XGBRegressor
-model = XGBRegressor(
-    max_depth = 8,
-    n_estimators = 1000,
-    min_child_weight=300,
-    colsample_bytree = 0.8,
-    subsample=0.8,
-    eta=0.3,
-    seed=42)
-
-model.fit(
-    X_train,
-    y_train,
-    eval_metric='rmse',
-    eval_set=[(X_train, y_train), (X_valid, y_valid)],
-    verbose=True,
-    early_stopping_rounds=30
-)
-
-y_pred = model.predict(X_valid)
-y_test_xgboost = model.predict(X_test)
-
-##################################
-
-from lightgbm import LGBMRegressor
-lgbm = LGBMRegressor(
-    max_depth=8,
-    n_estimators=1000,
-    min_child_weight=300,
-    colsample_bytree=0.8,
-    subsample=0.8,
-    eta=0.3,
-    seed=42
-)
-lgbm.fit(
-    X_train,
-    y_train,
-    eval_metric='rmse',
-    eval_set=[(X_train, y_train), (X_valid, y_valid)],
-    verbose=True,
-    early_stopping_rounds=30
-)
-
-y_test_lgbm = lgbm.predict(X_test)
-y_test_lgbm
-
-#####################################
-
-from sklearn.ensemble import RandomForestRegressor
-rf = RandomForestRegressor(
-    n_estimators=25,
-    random_state=42, 
-    max_depth=15, 
-    n_jobs=-1
-)
-rf.fit(
-    X_train,
-    y_train,
-)
-
-y_pred = rf.predict(X_valid)
-y_test_rf = rf.predict(X_test)
-y_test_rf
-#################################
-
-
-from xgboost import plot_importance
-fig, ax = plt.subplots(1, 1, figsize = (10, 14))
-plot_importance(model, ax = ax)
-
-
-
-from lightgbm import plot_importance
-fig, ax = plt.subplots(1, 1, figsize = (10, 14))
-plot_importance(lgbm, ax = ax)
-
-
-
-# 모델 저장하기
-# model.save_model('.model')
-
+y_test = gbm.predict(X_test[feature_name])
 
 
 # 제출자료 만들기
 submission = pd.DataFrame({
     "num_date_time": sample_submission.num_date_time, 
-    "answer": y_test_xgboost
+    "answer": y_test
 })
-submission.to_csv('xgb_submission.csv', index=False)
-sample_submission
-submission
+submission.to_csv('gbm_submission.csv', index=False)
 
 
 
-
-
-
-
-
-
-
-
-################
+# ---*---*---*  ---*---*---*
+# 여섯번째 제출 준비
 
 #앙상블 모델
 
@@ -756,10 +708,10 @@ single_models = [
     ('linear_reg', linear_reg), 
     ('ridge', ridge), 
     ('lasso', lasso), 
-    #('elasticnet_pipeline', elasticnet_pipeline), 
-    #('poly_pipeline', poly_pipeline)
+    ('elasticnet_pipeline', elasticnet_pipeline), 
+    ('poly_pipeline', poly_pipeline)
 ]
-
+voting_regressor = VotingRegressor(single_models, n_jobs=-1)
 
 VotingRegressor(estimators=[('linear_reg',
                              LinearRegression(copy_X=True, fit_intercept=True,
@@ -800,4 +752,158 @@ voting_pred = voting_regressor.predict(X_test)
 voting_pred = voting_regressor.predict(X_valid)
 
 mse_eval('Voting Ensemble', voting_pred, y_valid)
-voting_pred= voting_pred.clip(0, 20)
+
+
+# 제출자료 만들기
+submission = pd.DataFrame({
+    "num_date_time": sample_submission.num_date_time, 
+    "answer": voting_pred
+})
+submission.to_csv('voting_ensemble_submission.csv', index=False)
+
+
+# ---*---*---*  ---*---*---*
+# N번째 제출 준비
+# 불쾌지수, hour lag 추가, 스케일러 적용
+from sklearn.preprocessing import MinMaxScaler
+
+mmscaler = MinMaxScaler()
+
+train_mmscaled = mmscaler.fit_transform(train)
+
+train_mmscaled_undo = mmscaler.inverse_transform(train_mmscaled)
+train_mmscaled_undo
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ---*---*---*  ---*---*---*
+# ---*---*---*  ---*---*---*
+# ---*---*---*  ---*---*---*
+'''
+전체 틀잡기
+'''
+from xgboost import XGBRegressor
+model = XGBRegressor(
+    max_depth = 8,
+    n_estimators = 1000,
+    min_child_weight=300,
+    colsample_bytree = 0.8,
+    subsample=0.8,
+    eta=0.3,
+    seed=42)
+
+model.fit(
+    X_train,
+    y_train,
+    eval_metric='rmse',
+    eval_set=[(X_train, y_train), (X_valid, y_valid)],
+    verbose=True,
+    early_stopping_rounds=30
+)
+
+y_pred = model.predict(X_valid)
+y_test_xgboost = model.predict(X_test)
+
+##################################
+
+from lightgbm import LGBMRegressor
+lgbm = LGBMRegressor(
+    max_depth=8,
+    n_estimators=1000,
+    min_child_weight=300,
+    colsample_bytree=0.8,
+    subsample=0.8,
+    eta=0.3,
+    seed=42
+)
+lgbm.fit(
+    X_train,
+    y_train,
+    eval_metric='rmse',
+    eval_set=[(X_train, y_train), (X_valid, y_valid)],
+    verbose=True,
+    early_stopping_rounds=30
+)
+
+y_test_lgbm = lgbm.predict(X_test)
+y_test_lgbm
+
+#####################################
+
+from sklearn.ensemble import RandomForestRegressor
+rf = RandomForestRegressor(
+    n_estimators=25,
+    random_state=42, 
+    max_depth=15, 
+    n_jobs=-1
+)
+rf.fit(
+    X_train,
+    y_train,
+)
+
+y_pred = rf.predict(X_valid)
+y_test_rf = rf.predict(X_test)
+y_test_rf
+#################################
+
+
+from xgboost import plot_importance
+fig, ax = plt.subplots(1, 1, figsize = (10, 14))
+plot_importance(model, ax = ax)
+
+
+
+from lightgbm import plot_importance
+fig, ax = plt.subplots(1, 1, figsize = (10, 14))
+plot_importance(lgbm, ax = ax)
+
+
+
+# 모델 저장하기
+# model.save_model('.model')
+
+
+
+# 제출자료 만들기
+submission = pd.DataFrame({
+    "num_date_time": sample_submission.num_date_time, 
+    "answer": y_test_xgboost
+})
+submission.to_csv('xgb_submission.csv', index=False)
+sample_submission
+submission
+
+
+
+
+
+
+
+
+
+
+
+################
