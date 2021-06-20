@@ -94,6 +94,8 @@ atKbo_19_MlbTot = pd.read_csv('fangraphs_foreigners_2019.csv')
 atKbo_19_StatCast = pd.read_csv('baseball_savant_foreigners_2019.csv')
 
 atKbo_11_18_KboRegSsn.head(10)
+atKbo_11_18_MlbTot.head(10)
+atKbo_11_18_StatCast.head(10)
 
 atKbo_19_MlbTot.head(10)
 

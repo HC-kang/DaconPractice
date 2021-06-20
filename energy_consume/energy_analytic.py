@@ -327,7 +327,7 @@ def visualize_n_cluster(train_ts, n_lists=[3,4,5,6],metric='dtw',seed=2021,vis=T
     for idx,n in enumerate(n_lists):
         ts_kmeans=TimeSeriesKMeans(n_clusters=n, metric=metric, random_state=seed)
         train_ts['cluster(n={})'.format(n)]=ts_kmeans.fit_predict(train_ts)
-        score=round(silhouette_score(train_ts,train_ts['cluster(n={}'.format(n)],metric='euclidean'),3)
+        score=round(silhouette_score(train_ts,train_ts['cluster(n={})'.format(n)],metric='euclidean'),3)
 
         vc=train_ts['cluster(n={})'.format(n)].value_counts()
 
@@ -358,7 +358,7 @@ def visualize_by_cluster(df_with_labels, n_cluster, algorithm):
         if algorithm=='kmeans':
             df = train[train.num.isin(list(labels[labels==label].keys()))]
         elif algorithm=='som':
-            df = train[train.num.isin(som_df[som_df.cluster==label].num.values())]
+            df = train[train.num.isin(som_df[som_df.cluster==label].num.values)]
         
         hour = df.hour.unique()
         weekday = df.weekday.unique()
@@ -386,3 +386,93 @@ def visualize_by_cluster(df_with_labels, n_cluster, algorithm):
         ax.legend('총 {}개 건물'.format(df.num.nunique()), loc=1)
 
     plt.show()
+
+train_ts = cluster_df(scaler=StandardScaler())
+train_ts = visualize_n_cluster(train_ts, n_lists = [3,4,5,6], metric='euclidean', seed = 2021, vis = True)
+
+visualize_by_cluster(train_ts, n_cluster = 4, algorithm = 'kmeans')
+
+train_ts = cluster_df(scaler= StandardScaler())
+X = train_ts.values
+
+som = MiniSom(x=2,y=3,input_len=X.shape[1])
+som.random_weights_init(X)
+som.train(data=X, num_iteration=50000)
+
+som_df = make_som_df(X)
+visualize_by_cluster(som_df, 6, algorithm='som')
+
+
+model_history = {}
+forecast_future = {}
+predict_past = {}
+
+train_ = train.drop(columns=['month', 'day', 'hour', 'weekday'])
+
+for num in tqdm(range(1,61)):
+    
+    ## 피처 골라내서 데이터프레임 만들기
+    train_num1 = train_[train_.num==num]
+    train_num1_corr = train_num1.corr()['전력사용량(kWh)']
+    variables = train_num1_corr[abs(train_num1_corr)>0.3].keys().tolist()
+    train_num1 = train_num1[variables]
+    
+    ## 정규화
+    if train_num1.shape[1]>1:
+        feature_scaler = MinMaxScaler()
+        train_num1.iloc[:,:-1] = feature_scaler.fit_transform(train_num1.iloc[:,:-1])
+
+    y_scaler = StandardScaler()
+    y_scaler = y_scaler.fit(train_num1[['전력사용량(kWh)']])
+    train_num1['전력사용량(kWh)'] = y_scaler.transform(train_num1[['전력사용량(kWh)']])
+
+    train_num1 = train_num1.values
+    
+    ## 시계열 데이터 만들기
+    train_X = []
+    train_y = []
+
+    n_future = 1
+    n_past = 24 ## 24시간 전의 데이터까지 고려
+
+    for i in range(n_past, len(train_num1)-n_future+1):
+        train_X.append(train_num1[i-n_past:i, 0:train_num1.shape[1]])
+        train_y.append(train_num1[i+n_future-1:i+n_future, -1])
+    train_X, train_y = np.array(train_X), np.array(train_y)
+    
+    ## 모델 형성
+    model = Sequential()
+    model.add(LSTM(64, activation='relu', input_shape=(train_X.shape[1], train_X.shape[2]), return_sequences=True))
+    model.add(LSTM(32, activation='relu', return_sequences=False))
+    model.add(Dropout(0.2))
+    model.add(Dense(train_y.shape[1]))
+    model.compile(optimizer='adam', loss=SMAPE)
+
+    ## 모델 학습
+    history = model.fit(train_X, train_y, epochs=10, batch_size=16, validation_split=0.1, verbose=0, shuffle=False)
+    model_history['num{}'.format(num)] = history
+    
+    ## 예측
+    ### 1. 테스트데이터 예측
+    n_future = 168
+    forecast_period_dates = test[test.num==num]['date_time'].tolist()
+    forecast = model.predict(test[-n_future:])
+    y_pred_future = y_scaler.inverse_transform(forecast)[:,0]
+    forecast_future['num{}'.format(num)] = y_pred_future
+    
+    ### 2. 학습데이터 예측
+    predict_train = model.predict(train_X)
+    predict_train = y_scaler.inverse_transform(predict_train)
+    predict_train = predict_train[:,0]
+    predict_past['num{}'.format(num)] = predict_train
+    
+
+train_dates = train.date_time.unique()[24:]
+test_dates = test.date_time.unique()
+y_pred_future = forecast_future['num1']
+predict_train = predict_past['num1']
+
+sns.lineplot(x=train_dates, y=train[train.num==1]['전력사용량(kWh)'][24:], alpha=0.5, label='train기존')
+sns.lineplot(x=train_dates, y=predict_train, alpha=0.5, label='train예측')
+sns.lineplot(x=test_dates, y=y_pred_future, label='test예측')
+plt.show()
