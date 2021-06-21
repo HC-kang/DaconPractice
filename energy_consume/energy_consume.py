@@ -307,27 +307,34 @@ y_valid = train[(train.num_day >= 78) & (train.num_day<86)]['energy']
 X_test = train[train.num_day >= 86].drop(['energy'], axis=1)
 del train
 
+# valid 없이 나누기
+X_train = train[train.num_day < 86].drop(['energy'], axis=1)
+y_train = train[train.num_day < 86]['energy']
+
+X_test = train[train.num_day >= 86].drop(['energy'], axis=1)
+
+
 #########################
 #########################
 #########################
 
 from xgboost import XGBRegressor
 xgb = XGBRegressor(
-    # max_depth = 8,
-    # n_estimators = 1000,
-    # min_child_weight=300,
-    # colsample_bytree = 0.8,
-    # subsample=0.8,
-    # eta=0.3,
+    max_depth = 8,
+    n_estimators = 1000,
+    min_child_weight=300,
+    colsample_bytree = 0.8,
+    subsample=0.8,
+    eta=0.3,
     seed=42)
 
 xgb.fit(
     X_train,
     y_train,
-    eval_metric='rmse',
-    eval_set=[(X_train, y_train), (X_valid, y_valid)],
+    # eval_metric='rmse',
+    # eval_set=[(X_train, y_train), (X_valid, y_valid)],
     verbose=True,
-    early_stopping_rounds=30
+    # early_stopping_rounds=30
 )
 
 y_pred = xgb.predict(X_valid)
@@ -346,7 +353,7 @@ submission = pd.DataFrame({
     "num_date_time": sample_submission.num_date_time, 
     "answer": y_test_xgboost
 })
-submission.to_csv('xgb_submission_4.csv', index=False)
+submission.to_csv('xgb_submission_6.csv', index=False)
 sample_submission
 submission
 
@@ -392,6 +399,15 @@ gbm 모델 가져다 썼고, 성능은 그냥 그렇네.. 아무래도 이후 �
 voting_ensemble_submission.csv
 점수 : 92.4047396438
 왜 점점 퇴화하냐..
+
+10회차
+xgboost
+3시간 예측, 불쾌지수 빼니까 등수가 올라감... 
++ valid 통째로 빼버림.
+점수 : 19.6489473422
+
+그래.. 당일거를 예측에 쓰는건 확실히 뭔가 안맞는 느낌이 있지.. 근데 그런의미에서 하루 전도 틀린거 아닐까 싶네
+템프4를 살려볼까?
 
 '''
 ###############################
@@ -526,7 +542,7 @@ submission.to_csv('gbm_submission.csv', index=False)
 
 
 # ---*---*---*  ---*---*---*
-# 여섯번째 제출 준비
+# 일곱번째 제출 준비
 
 #앙상블 모델
 
@@ -760,6 +776,89 @@ submission = pd.DataFrame({
     "answer": voting_pred
 })
 submission.to_csv('voting_ensemble_submission.csv', index=False)
+
+# ---*---*---*  ---*---*---*
+# 여덟번째 제출 준비
+# valid 없이, 노멀 lgbm 제출
+from lightgbm import LGBMRegressor
+
+# LightGBM Regressor 모델
+lgbm = LGBMRegressor(max_depth=10, n_estimators=100, random_state=40)
+lgbm.fit(X_train, y_train)
+
+# 예측하기
+y_pred = lgbm.predict(X_test)
+
+# 제출자료 만들기
+submission = pd.DataFrame({
+    "num_date_time": sample_submission.num_date_time, 
+    "answer": y_pred
+})
+submission.to_csv('lgbm_submission_2.csv', index=False)
+
+# ---*---*---*  ---*---*---*
+# 아홉번째 제출 준비
+# xgb
+
+from xgboost import XGBRegressor
+xgb = XGBRegressor(
+    max_depth = 10,
+    n_estimators = 1000,
+    seed=42)
+
+xgb.fit(
+    X_train,
+    y_train,
+    verbose=True,
+)
+
+y_test_xgboost = xgb.predict(X_test)
+
+# 제출자료 만들기
+submission = pd.DataFrame({
+    "num_date_time": sample_submission.num_date_time, 
+    "answer": y_test_xgboost
+})
+submission.to_csv('xgb_submission_5.csv', index=False)
+
+
+# ---*---*---*  ---*---*---*
+# 여덟번째 제출 준비
+# kfold로 도전
+from sklearn.model_selection import KFold
+
+
+train_x = train[train.num_day < 86].drop(['energy'], axis=1)
+train_y = train[train.num_day < 86]['energy']
+
+X_test = train[train.num_day >= 86].drop(['energy'], axis=1)
+
+
+cross=KFold(n_splits=5, shuffle=True, random_state=42)
+folds=[]
+for train_idx, valid_idx in cross.split(train_x, train_y):
+    folds.append((train_idx, valid_idx))
+
+models={}
+for fold in range(5):
+    print(f'===================={fold+1}=======================')
+    train_idx, valid_idx=folds[fold]
+    X_train=train_x.iloc[train_idx, :]
+    y_train=train_y.iloc[train_idx, :]
+    X_valid=train_x.iloc[valid_idx, :]
+    y_valid=train_y.iloc[valid_idx, :]
+    
+    model=LGBMRegressor(n_estimators=100)
+    model.fit(X_train, y_train, eval_set=[(X_train, y_train), (X_valid, y_valid)], 
+             early_stopping_rounds=30, verbose=100)
+    models[fold]=model
+    
+    print(f'================================================\n\n')
+
+for i in range(5):
+    submission['answer'] += models[i].predict(test)/5 
+
+
 
 
 # ---*---*---*  ---*---*---*
