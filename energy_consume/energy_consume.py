@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib import rc
 %matplotlib inline
 %config InlineBackend.figure_format = 'retina'
-# from glob import glob
+from tslearn.clustering import TimeSeriesKMeans, silhouette_score
 import plotly.express as px
 import os
 import seaborn as sns
@@ -21,7 +21,7 @@ train = pd.read_csv('train.csv', encoding='cp949')
 test = pd.read_csv('test.csv', encoding='cp949')
 sample_submission = pd.read_csv('sample_submission.csv', encoding='cp949')
 
-train.head() 
+train
 train.tail()
 train.shape #(122400, 10) 20.6.1~ 8.24
 train.info()
@@ -266,18 +266,21 @@ train.temp4
 # 일단 대략적으로 끝
 ###################
 def SMAPE(true, pred):
-    
     v = 2 * abs(pred - true) / (abs(pred) + abs(true))
-
     output = np.mean(v) * 100
-
     return output
 
 
 SMAPE(y_valid, y_pred)
 # 이전 : 0.04320080970690549
 # 이후 : 0.027917625681270052
+# scaler : 8.545429389000786
+# std_scaler : 21.307999985271227
+# mm_scaler : 16.34143720271491
+# ma_scaler : 8.780832133459596
+# rb_scaler : 19.338556561555645
 
+train.drop(['energy_hour_lag_1','energy_hour_lag_2','energy_hour_lag_3'], axis = 1, inplace=True)
 train.drop(['energy_hour_lag_1','energy_hour_lag_2','energy_hour_lag_3','THI'], axis = 1, inplace=True)
 train
 
@@ -313,6 +316,179 @@ y_train = train[train.num_day < 86]['energy']
 
 X_test = train[train.num_day >= 86].drop(['energy'], axis=1)
 
+# #########################
+# from sklearn.preprocessing import StandardScaler
+
+# std_scaler = StandardScaler()
+# X_train_std = std_scaler.fit_transform(X_train)
+# X_valid_std = std_scaler.fit_transform(X_valid)
+
+# from sklearn.preprocessing import MinMaxScaler
+
+# mm_scaler = MinMaxScaler()
+# X_train_mm = mm_scaler.fit_transform(X_train)
+# X_valid_mm = mm_scaler.fit_transform(X_valid)
+
+####
+# THI 제외
+X_train_cat = X_train[['num','cooling', 'solar',
+       'month', 'day', 'hour', 'weekday',  'isholy', 'isweekend',
+        'group']]
+X_train = X_train[['temp', 'wind', 'humid', 'rain', 'sunshine','num_day','energy_num', 'temp_num', 'humid_num', 'sunshine_num', 'temp4',
+       'energy_num_weekday', 'energy_day_lag_1', 'energy_day_lag_2',
+       'energy_day_lag_3', 'energy_day_lag_4', 'energy_day_lag_5',
+       'energy_day_lag_6', 'energy_day_lag_7', 'energy_day_lag_14',
+       'energy_day_lag_21']]
+
+X_valid_cat = X_valid[['num','cooling', 'solar',
+       'month', 'day', 'hour', 'weekday',  'isholy', 'isweekend',
+        'group']]
+X_valid = X_valid[['temp', 'wind', 'humid', 'rain', 'sunshine','num_day','energy_num', 'temp_num', 'humid_num', 'sunshine_num', 'temp4',
+       'energy_num_weekday', 'energy_day_lag_1', 'energy_day_lag_2',
+       'energy_day_lag_3', 'energy_day_lag_4', 'energy_day_lag_5',
+       'energy_day_lag_6', 'energy_day_lag_7', 'energy_day_lag_14',
+       'energy_day_lag_21']]
+
+X_test_cat = X_test[['num','cooling', 'solar',
+       'month', 'day', 'hour', 'weekday',  'isholy', 'isweekend',
+        'group']]
+X_test = X_test[['temp', 'wind', 'humid', 'rain', 'sunshine','num_day','energy_num', 'temp_num', 'humid_num', 'sunshine_num', 'temp4',
+       'energy_num_weekday', 'energy_day_lag_1', 'energy_day_lag_2',
+       'energy_day_lag_3', 'energy_day_lag_4', 'energy_day_lag_5',
+       'energy_day_lag_6', 'energy_day_lag_7', 'energy_day_lag_14',
+       'energy_day_lag_21']]
+
+# THI 포함
+X_train_cat = X_train[['num',
+       'day', 'hour', 'weekday',  'isholy','group']]
+# X_train_cat = X_train[['num','cooling', 'solar',
+#        'month', 'day', 'hour', 'weekday',  'isholy', 'isweekend',
+#         'group']]
+X_train = X_train[['temp', 'wind', 'humid', 'rain', 'sunshine','num_day','energy_num', 'temp_num', 'humid_num', 'sunshine_num', 'temp4',
+       'energy_num_weekday', 'energy_day_lag_1', 'energy_day_lag_2',
+       'energy_day_lag_3', 'energy_day_lag_4', 'energy_day_lag_5',
+       'energy_day_lag_6', 'energy_day_lag_7', 'energy_day_lag_14',
+       'energy_day_lag_21','THI']]
+
+X_valid_cat = X_valid[['num',
+       'day', 'hour', 'weekday',  'isholy','group']]
+# X_valid_cat = X_valid[['num','cooling', 'solar',
+#        'month', 'day', 'hour', 'weekday',  'isholy', 'isweekend',
+#         'group']]
+X_valid = X_valid[['temp', 'wind', 'humid', 'rain', 'sunshine','num_day','energy_num', 'temp_num', 'humid_num', 'sunshine_num', 'temp4',
+       'energy_num_weekday', 'energy_day_lag_1', 'energy_day_lag_2',
+       'energy_day_lag_3', 'energy_day_lag_4', 'energy_day_lag_5',
+       'energy_day_lag_6', 'energy_day_lag_7', 'energy_day_lag_14',
+       'energy_day_lag_21','THI']]
+
+X_test_cat = X_test[['num',
+       'day', 'hour', 'weekday',  'isholy','group']]
+# X_test_cat = X_test[['num','cooling', 'solar',
+#        'month', 'day', 'hour', 'weekday',  'isholy', 'isweekend',
+#         'group']]
+X_test = X_test[['temp', 'wind', 'humid', 'rain', 'sunshine','num_day','energy_num', 'temp_num', 'humid_num', 'sunshine_num', 'temp4',
+       'energy_num_weekday', 'energy_day_lag_1', 'energy_day_lag_2',
+       'energy_day_lag_3', 'energy_day_lag_4', 'energy_day_lag_5',
+       'energy_day_lag_6', 'energy_day_lag_7', 'energy_day_lag_14',
+       'energy_day_lag_21','THI']]
+
+from sklearn.preprocessing import MaxAbsScaler
+
+ma_scaler = MaxAbsScaler()
+X_train_ma = ma_scaler.fit_transform(X_train)
+X_valid_ma = ma_scaler.fit_transform(X_valid)
+X_test_ma = ma_scaler.fit_transform(X_test)
+
+# 스케일링 후 붙이기
+X_train_cat = X_train_cat.reset_index(drop=True)
+X_train_ma = pd.DataFrame(X_train_ma)
+X_train_ma = pd.concat([X_train_ma, X_train_cat], axis = 1)
+X_train_ma
+X_train_cat
+X_valid_cat = X_valid_cat.reset_index(drop=True)
+X_valid_ma = pd.DataFrame(X_valid_ma)
+X_valid_ma = pd.concat([X_valid_ma, X_valid_cat], axis = 1)
+X_valid_ma
+X_test_cat = X_test_cat.reset_index(drop=True)
+X_test_ma = pd.DataFrame(X_test_ma)
+X_test_ma = pd.concat([X_test_ma, X_test_cat], axis = 1)
+X_test_ma
+X_test_cat
+X_train_cat
+X_train_ma.shape
+X_test_ma
+X_test_cat = X_test_cat.reset_index(drop=True)
+
+
+####
+
+# from sklearn.preprocessing import RobustScaler
+
+# rb_scaler = RobustScaler()
+# X_train_rb = rb_scaler.fit_transform(X_train)
+# X_valid_rb = rb_scaler.fit_transform(X_valid)
+
+
+#########################
+
+from sklearn.decomposition import PCA
+pca = PCA(n_components = 10)
+pca.fit(X_train)
+print(pca.components_.shape)
+X_train_pca = pca.transform(X_train)
+print(X_train_pca)
+print(X_train_pca.shape)
+''''''
+# 그룹 만들기
+from sklearn.preprocessing import MaxAbsScaler
+def cluster_df(scaler=MaxAbsScaler()): # scaler=[False,'MinMaxScaler()','StandardScaler()']
+    train_=train.copy()
+    train_ts=train_.pivot_table(values='energy', index=train_.num,columns='date_time',aggfunc='first')
+
+    if scaler:
+        train_ts_T=scaler.fit_transform(train_ts.T)
+        train_ts=pd.DataFrame(train_ts_T.T,index=train_ts.index,columns=train_ts.columns)
+
+    return train_ts
+
+
+def visualize_n_cluster(train_ts, n_lists=[3,4,5,6],metric='dtw',seed=2021,vis=True):
+
+    for idx,n in enumerate(n_lists):
+        ts_kmeans=TimeSeriesKMeans(n_clusters=n, metric=metric, random_state=seed)
+        train_ts['cluster(n={})'.format(n)]=ts_kmeans.fit_predict(train_ts)
+        score=round(silhouette_score(train_ts,train_ts['cluster(n={})'.format(n)],metric='euclidean'),3)
+
+    return train_ts
+
+train_ts = cluster_df()
+train_ts = visualize_n_cluster(train_ts, n_lists = [3,4,5,6], metric='euclidean', seed = 2021, vis = True)
+train_group = train_ts['cluster(n=4)']
+train_group
+
+train = pd.merge(train, train_group, on='num', how = 'left')
+# THI 포함
+train.columns = ['num', 'date_time', 'energy', 'temp', 'wind', 'humid', 'rain',
+       'sunshine', 'cooling', 'solar', 'month', 'day', 'hour', 'weekday',
+       'num_day', 'isholy', 'isweekend', 'energy_num', 'temp_num', 'humid_num',
+       'sunshine_num', 'temp4', 'energy_num_weekday', 'THI',
+       'energy_day_lag_1', 'energy_day_lag_2', 'energy_day_lag_3',
+       'energy_day_lag_4', 'energy_day_lag_5', 'energy_day_lag_6',
+       'energy_day_lag_7', 'energy_day_lag_14', 'energy_day_lag_21',
+       'group']
+
+# THI 제외
+train.columns = ['num', 'date_time', 'energy', 'temp', 'wind', 'humid', 'rain',
+       'sunshine', 'cooling', 'solar', 'month', 'day', 'hour', 'weekday',
+       'num_day', 'isholy', 'isweekend', 'energy_num', 'temp_num', 'humid_num',
+       'sunshine_num', 'temp4', 'energy_num_weekday', 'energy_day_lag_1',
+       'energy_day_lag_2', 'energy_day_lag_3', 'energy_day_lag_4',
+       'energy_day_lag_5', 'energy_day_lag_6', 'energy_day_lag_7',
+       'energy_day_lag_14', 'energy_day_lag_21', 'group']
+train
+
+''''''
+
 
 #########################
 #########################
@@ -320,7 +496,7 @@ X_test = train[train.num_day >= 86].drop(['energy'], axis=1)
 
 from xgboost import XGBRegressor
 xgb = XGBRegressor(
-    max_depth = 8,
+    max_depth = 10,
     n_estimators = 1000,
     min_child_weight=300,
     colsample_bytree = 0.8,
@@ -329,22 +505,22 @@ xgb = XGBRegressor(
     seed=42)
 
 xgb.fit(
-    X_train,
+    X_train_ma,
     y_train,
     # eval_metric='rmse',
     # eval_set=[(X_train, y_train), (X_valid, y_valid)],
-    verbose=True,
+    verbose=1,
     # early_stopping_rounds=30
 )
 
-y_pred = xgb.predict(X_valid)
-y_test_xgboost = xgb.predict(X_test)
+y_pred = xgb.predict(X_valid_ma)
+y_test_xgboost = xgb.predict(X_test_ma)
 
 ##################################
 from xgboost import plot_importance
 fig, ax = plt.subplots(1, 1, figsize = (10, 14))
 plot_importance(xgb, ax = ax)
-
+X_train
 # 모델 저장하기
 # model.save_model('.model')
 
@@ -353,7 +529,7 @@ submission = pd.DataFrame({
     "num_date_time": sample_submission.num_date_time, 
     "answer": y_test_xgboost
 })
-submission.to_csv('xgb_submission_6.csv', index=False)
+submission.to_csv('xgb_submission_minabs_scaler_grouping_cat_cut.csv', index=False)
 sample_submission
 submission
 
@@ -409,6 +585,36 @@ xgboost
 그래.. 당일거를 예측에 쓰는건 확실히 뭔가 안맞는 느낌이 있지.. 근데 그런의미에서 하루 전도 틀린거 아닐까 싶네
 템프4를 살려볼까?
 
+11회차
+xgboost
+3시간 예측, 불쾌지수 빼니까 등수가 올라감... 
++ valid 통째로 빼버림.
++ MaxAbsScaler 적용
+점수 : 16.8679736883
+
+스케일러 여러개 돌려본 보람이 있네.
+
+12회차
+xgboost
+3시간 예측, 불쾌지수 빼니까 등수가 올라감... 
++ valid 통째로 빼버림.
++ MaxAbsScaler 적용
++ 그룹화 결과도 붙일 예정
+점수 : 16.0963495967	
+
+아주 미약하게 상승하는 효과가 있음... 쓸데없는걸 빼볼까 고민.
+
+13회차
+xgboost
+3시간 예측, 불쾌지수 빼니까 등수가 올라감... 
++ valid 통째로 빼버림.
++ MaxAbsScaler 적용
++ 그룹화 결과도 붙일 예정
++ 카테고리 빼고 스케일링 했는데 떨어짐
+점수 : 17.6096165915
+
+뭐여 이건.. 14회차는 쓸데없는 카테고리 싹 빼버리고, k폴드 돌려봐야겠다
+
 '''
 ###############################
 ###############################
@@ -431,16 +637,16 @@ lgbm = LGBMRegressor(
     seed=42
 )
 lgbm.fit(
-    X_train,
+    X_train_ma,
     y_train,
-    eval_metric='rmse',
-    eval_set=[(X_train, y_train), (X_valid, y_valid)],
+    #eval_metric='rmse',
+    #eval_set=[(X_train, y_train), (X_valid, y_valid)],
     verbose=True,
-    early_stopping_rounds=30
+    #early_stopping_rounds=30
 )
 
-y_pred = lgbm.predict(X_valid)
-y_test_lgbm = lgbm.predict(X_test)
+y_pred = lgbm.predict(X_valid_ma)
+y_test_lgbm = lgbm.predict(X_test_ma)
 y_test_lgbm
 
 # 제출자료 만들기
@@ -448,7 +654,7 @@ submission = pd.DataFrame({
     "num_date_time": sample_submission.num_date_time, 
     "answer": y_test_lgbm
 })
-submission.to_csv('lgbm_submission.csv', index=False)
+submission.to_csv('lgbm_submission_3.csv', index=False)
 sample_submission
 submission
 
