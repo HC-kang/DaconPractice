@@ -288,13 +288,18 @@ train
 
 # ---*---*---* 첫 번째 모델 ---*---*---*
 # 불쾌지수 미적용
-# train.to_pickle('full_train_nan.pkl')
-train = pd.read_pickle('full_train_nan.pkl')
+# train.to_pickle('slim_group_train_nan.pkl')
+# train = pd.read_pickle('full_train_nan.pkl')
+train = pd.read_pickle('slim_group_train_nan.pkl')
 train.drop('date_time', axis = 1, inplace=True)
 #train = train[train['num_day']>7]
 # nan값 잡기
 train.isna().sum()
 train.fillna(0, inplace=True)
+
+train.drop(['energy_day_lag_14', 'energy_day_lag_21'], axis = 1, inplace = True)
+train.dropna(axis = 0, inplace = True)
+train
 
 train[train['num_day']==78]
 train[train['num_day']==85]
@@ -312,7 +317,7 @@ del train
 
 # valid 없이 나누기
 X_train = train[train.num_day < 86].drop(['energy'], axis=1)
-y_train = train[train.num_day < 86]['energy']
+y_train = train[train.num_day < 86][['energy']]
 
 X_test = train[train.num_day >= 86].drop(['energy'], axis=1)
 
@@ -329,6 +334,31 @@ X_test = train[train.num_day >= 86].drop(['energy'], axis=1)
 # X_train_mm = mm_scaler.fit_transform(X_train)
 # X_valid_mm = mm_scaler.fit_transform(X_valid)
 
+####
+# THI, 14, 21 제외
+X_train_cat = X_train[['num','cooling', 'solar',
+       'month', 'day', 'hour', 'weekday',  'isholy', 'isweekend',
+        'group']]
+X_train = X_train[['temp', 'wind', 'humid', 'rain', 'sunshine','num_day','energy_num', 'temp_num', 'humid_num', 'sunshine_num', 'temp4',
+       'energy_num_weekday', 'energy_day_lag_1', 'energy_day_lag_2',
+       'energy_day_lag_3', 'energy_day_lag_4', 'energy_day_lag_5',
+       'energy_day_lag_6', 'energy_day_lag_7', ]]
+
+X_valid_cat = X_valid[['num','cooling', 'solar',
+       'month', 'day', 'hour', 'weekday',  'isholy', 'isweekend',
+        'group']]
+X_valid = X_valid[['temp', 'wind', 'humid', 'rain', 'sunshine','num_day','energy_num', 'temp_num', 'humid_num', 'sunshine_num', 'temp4',
+       'energy_num_weekday', 'energy_day_lag_1', 'energy_day_lag_2',
+       'energy_day_lag_3', 'energy_day_lag_4', 'energy_day_lag_5',
+       'energy_day_lag_6', 'energy_day_lag_7', ]]
+
+X_test_cat = X_test[['num','cooling', 'solar',
+       'month', 'day', 'hour', 'weekday',  'isholy', 'isweekend',
+        'group']]
+X_test = X_test[['temp', 'wind', 'humid', 'rain', 'sunshine','num_day','energy_num', 'temp_num', 'humid_num', 'sunshine_num', 'temp4',
+       'energy_num_weekday', 'energy_day_lag_1', 'energy_day_lag_2',
+       'energy_day_lag_3', 'energy_day_lag_4', 'energy_day_lag_5',
+       'energy_day_lag_6', 'energy_day_lag_7', ]]
 ####
 # THI 제외
 X_train_cat = X_train[['num','cooling', 'solar',
@@ -415,7 +445,8 @@ X_test_ma = pd.concat([X_test_ma, X_test_cat], axis = 1)
 X_test_ma
 X_test_cat
 X_train_cat
-X_train_ma.shape
+X_train_ma
+X_valid_ma
 X_test_ma
 X_test_cat = X_test_cat.reset_index(drop=True)
 
@@ -489,6 +520,53 @@ train
 
 ''''''
 
+#########################
+#########################
+#########################
+from sklearn.model_selection import KFold
+cross=KFold(n_splits=5, shuffle=True, random_state=42)
+folds = []
+for train_idx, valid_idx in cross.split(X_train_ma, y_train):
+    folds.append((train_idx, valid_idx))
+
+from xgboost import XGBRegressor
+models={}
+for fold in range(5):
+    print(f'====={fold+1}=====')
+    train_idx, valid_idx = folds[fold]
+    X_train_for_fold = X_train_ma.iloc[train_idx,:]
+    y_train_for_fold = y_train.iloc[train_idx,:]
+    X_valid_for_fold = X_train_ma.iloc[valid_idx,:]
+    y_valid_for_fold = y_train.iloc[valid_idx,:]
+
+    fold_xgb_model = XGBRegressor(max_depth = 8,
+                                  n_estimators = 1000,
+                                  min_child_weight=300,
+                                  colsample_bytree = 0.8,
+                                  subsample=0.8,
+                                  eta=0.3,
+                                  seed=42
+    )
+    fold_xgb_model.fit(X_train_for_fold,
+                       y_train_for_fold,
+                       eval_metric='rmse',
+                       eval_set=[(X_train_for_fold, y_train_for_fold), 
+                                 (X_valid_for_fold, y_valid_for_fold)],
+                       early_stopping_rounds=30,
+                       verbose=1,
+    )
+    models[fold] = fold_xgb_model
+    print('===============\n\n')
+
+
+# 제출자료 만들기
+sample_submission
+submission = sample_submission[:]
+submission
+for i in range(5):
+    submission['answer'] += models[i].predict(X_test_ma)/5
+submission
+submission.to_csv('xgb_submission_kfold_dropna.csv', index=False)
 
 #########################
 #########################
@@ -496,7 +574,7 @@ train
 
 from xgboost import XGBRegressor
 xgb = XGBRegressor(
-    max_depth = 10,
+    max_depth = 8,
     n_estimators = 1000,
     min_child_weight=300,
     colsample_bytree = 0.8,
@@ -507,10 +585,9 @@ xgb = XGBRegressor(
 xgb.fit(
     X_train_ma,
     y_train,
-    # eval_metric='rmse',
-    # eval_set=[(X_train, y_train), (X_valid, y_valid)],
+    eval_metric='mape',
+    eval_set=[(X_train_ma, y_train), (X_valid_ma, y_valid)],
     verbose=1,
-    # early_stopping_rounds=30
 )
 
 y_pred = xgb.predict(X_valid_ma)
@@ -615,6 +692,11 @@ xgboost
 
 뭐여 이건.. 14회차는 쓸데없는 카테고리 싹 빼버리고, k폴드 돌려봐야겠다
 
+
+17회차
+xgboost k-fold
+
+점수 : 17.4196295044
 '''
 ###############################
 ###############################
@@ -1081,28 +1163,6 @@ train_mmscaled_undo
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ---*---*---*  ---*---*---*
 # ---*---*---*  ---*---*---*
 # ---*---*---*  ---*---*---*
@@ -1201,14 +1261,35 @@ submission.to_csv('xgb_submission.csv', index=False)
 sample_submission
 submission
 
-
-
-
-
-
-
-
-
-
-
 ################
+# H2O 활용 모형 적합
+x_names = c('기온', '풍속', '습도', '강수량', '일조', 'hour', 'dow')
+y_names = '전력사용량'
+
+library(h2o)
+h2o.init()
+
+  
+for (i in 1:60){
+  dt_sub_train = dt_train[num==i, .SD, .SDcols = c(x_names, y_names)]
+  dt_sub_test  = dt_test[num==i, .SD, .SDcols = x_names]
+  h2o_train = as.h2o(dt_sub_train)
+  h2o_test  = as.h2o(dt_sub_test)
+  model = h2o.gbm(x=x_names,
+                  y=y_names,
+                  training_frame = h2o_train, 
+                  nfolds=5, 
+                  model_id = paste0('gbm_', formatC(i, width=2, flag='0')),
+                  stopping_rounds=10,
+                  max_depth=10,
+                  ntrees=150,
+                  sample_rate = 0.8)
+  pred = h2o.predict(model, h2o_test)
+  dt_test[num==i, answer:=as.data.table(pred)]
+}
+
+
+dt_submission = dt_test[, .(num_date_time = paste(num, date, hour),
+                            answer)]
+dt_submission
+fwrite(dt_submission, 'subm_02.csv')
